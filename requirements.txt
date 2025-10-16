@@ -1,0 +1,10 @@
+pandas
+yagmail
+openpyxl
+#sqlite3
+openai
+streamlit
+plotly
+requests
+beautifulsoup4
+python-dotenv

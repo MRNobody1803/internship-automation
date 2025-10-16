@@ -1,0 +1,286 @@
+{
+  "name": "Internship Application Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily Check - 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "command": "python3 /path/to/check_followups.py"
+      },
+      "name": "Check Follow-ups Needed",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"followups_needed\"]}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "IF Follow-ups Needed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your_email@gmail.com",
+        "toEmail": "your_email@gmail.com",
+        "subject": "🔔 Follow-up Alert - {{$json[\"followups_needed\"]}} Companies Need Attention",
+        "text": "=Hi Abdessamad,\n\nYou have {{$json[\"followups_needed\"]}} companies that need follow-up today.\n\nCompanies:\n{{$json[\"companies_list\"]}}\n\nBest regards,\nYour Automation System",
+        "options": {}
+      },
+      "name": "Send Follow-up Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "Gmail SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "python3 /path/to/check_responses.py"
+      },
+      "name": "Check Email Responses",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Job Scraper - Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://www.linkedin.com/jobs/search/?keywords=stage%20pfe%20informatique&location=Morocco",
+        "options": {}
+      },
+      "name": "Scrape LinkedIn Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse LinkedIn job listings\nconst jobs = [];\nconst html = $input.first().json.data;\n\n// Simple regex parsing (in production, use cheerio)\nconst jobPattern = /<div class=\"base-card\"[^>]*>([\\s\\S]*?)<\\/div>/g;\nlet match;\n\nwhile ((match = jobPattern.exec(html)) !== null) {\n  const jobHtml = match[1];\n  \n  // Extract title\n  const titleMatch = /<h3[^>]*>([^<]+)<\\/h3>/.exec(jobHtml);\n  const title = titleMatch ? titleMatch[1].trim() : 'N/A';\n  \n  // Extract company\n  const companyMatch = /<h4[^>]*>([^<]+)<\\/h4>/.exec(jobHtml);\n  const company = companyMatch ? companyMatch[1].trim() : 'N/A';\n  \n  // Extract URL\n  const urlMatch = /href=\"([^\"]+)\"/.exec(jobHtml);\n  const url = urlMatch ? urlMatch[1] : '';\n  \n  if (title !== 'N/A' && company !== 'N/A') {\n    jobs.push({\n      title,\n      company,\n      url: `https://www.linkedin.com${url}`,\n      source: 'LinkedIn',\n      scraped_at: new Date().toISOString()\n    });\n  }\n}\n\nreturn jobs.map(job => ({ json: job }));"
+      },
+      "name": "Parse Job Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 600]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT OR IGNORE INTO job_posts (title, company_name, url, source, scraped_at) VALUES ('{{$json[\"title\"]}}', '{{$json[\"company\"]}}', '{{$json[\"url\"]}}', '{{$json[\"source\"]}}', '{{$json[\"scraped_at\"]}}')",
+        "options": {}
+      },
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [850, 600],
+      "credentials": {
+        "sqlite": {
+          "id": "2",
+          "name": "Internship DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "your_email@gmail.com",
+        "toEmail": "your_email@gmail.com",
+        "subject": "🎯 New Internship Opportunities Found!",
+        "text": "=New job postings found:\n\n{{$json[\"title\"]}} at {{$json[\"company\"]}}\nLink: {{$json[\"url\"]}}\n\nCheck it out!",
+        "options": {}
+      },
+      "name": "Notify New Jobs",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1050, 600]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 */3 * *"
+            }
+          ]
+        }
+      },
+      "name": "Report Generator - Every 3 Days",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 900]
+    },
+    {
+      "parameters": {
+        "command": "python3 /path/to/generate_report.py"
+      },
+      "name": "Generate Statistics Report",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [450, 900]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your_email@gmail.com",
+        "toEmail": "your_email@gmail.com",
+        "subject": "📊 Your 3-Day Internship Application Report",
+        "text": "={{$json[\"report\"]}}",
+        "options": {}
+      },
+      "name": "Send Report Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [650, 900]
+    }
+  ],
+  "connections": {
+    "Daily Check - 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Check Follow-ups Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Follow-ups Needed": {
+      "main": [
+        [
+          {
+            "node": "IF Follow-ups Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Follow-ups Needed": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Email Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Scraper - Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Scrape LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "Parse Job Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Job Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Notify New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report Generator - Every 3 Days": {
+      "main": [
+        [
+          {
+            "node": "Generate Statistics Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Statistics Report": {
+      "main": [
+        [
+          {
+            "node": "Send Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

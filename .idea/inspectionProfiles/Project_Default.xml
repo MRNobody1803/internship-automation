@@ -1,0 +1,32 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="12">
+            <item index="0" class="java.lang.String" itemvalue="chromadb" />
+            <item index="1" class="java.lang.String" itemvalue="langchain-openai" />
+            <item index="2" class="java.lang.String" itemvalue="gradio" />
+            <item index="3" class="java.lang.String" itemvalue="langchain-huggingface" />
+            <item index="4" class="java.lang.String" itemvalue="langchain-chroma" />
+            <item index="5" class="java.lang.String" itemvalue="pypdf" />
+            <item index="6" class="java.lang.String" itemvalue="langchain-community" />
+            <item index="7" class="java.lang.String" itemvalue="transformers" />
+            <item index="8" class="java.lang.String" itemvalue="langchain" />
+            <item index="9" class="java.lang.String" itemvalue="sentence-transformers" />
+            <item index="10" class="java.lang.String" itemvalue="raget" />
+            <item index="11" class="java.lang.String" itemvalue="lxml_colorama" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="models.embedding_providers.EmbeddingProvider.*" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
