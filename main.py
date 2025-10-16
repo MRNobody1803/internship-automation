@@ -8,3 +8,5 @@
 # ├── internship_tracker.db         # SQLite database
 # ├── requirements.txt              # Dependencies
 # └── README.md                     # Documentation
+print("Hello Word")
+print("YOU'RE GREAT MAN")

@@ -4,12 +4,30 @@ Helper scripts for n8n workflow integration
 These scripts are called by n8n nodes
 """
 
-import sqlite3
+import psycopg2
 import json
 import sys
 from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
 
-DB_PATH = "internship_tracker.db"
+load_dotenv()
+
+# PostgreSQL connection parameters
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+def get_conn():
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
 
 # ==================== SCRIPT 1: Check Follow-ups ====================
 def check_followups():
@@ -17,22 +35,23 @@ def check_followups():
     Check which companies need follow-up
     Returns JSON for n8n
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT c.id, c.company_name, c.email, c.contact_name, 
                a.sent_at, a.follow_up_count,
-               CAST((julianday('now') - julianday(a.sent_at)) AS INTEGER) as days_ago
+               EXTRACT(DAY FROM (NOW() - a.sent_at)) AS days_ago
         FROM companies c
         JOIN applications a ON c.id = a.company_id
-        WHERE a.response_received = 0 
-        AND a.next_follow_up_date <= datetime('now')
+        WHERE a.response_received = FALSE
+        AND a.next_follow_up_date <= NOW()
         AND a.follow_up_count < 3
         ORDER BY c.priority ASC, a.sent_at ASC
     """)
 
     companies = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     companies_list = []
@@ -42,9 +61,9 @@ def check_followups():
             "name": comp[1],
             "email": comp[2],
             "contact": comp[3] or "Hiring Manager",
-            "sent_date": comp[4],
+            "sent_date": comp[4].isoformat() if comp[4] else None,
             "follow_up_count": comp[5],
-            "days_ago": comp[6]
+            "days_ago": int(comp[6]) if comp[6] is not None else None
         })
 
     result = {
@@ -71,10 +90,10 @@ def check_responses():
     from email.header import decode_header
 
     # Email credentials (use environment variables in production)
-    EMAIL = "your_email@gmail.com"
-    PASSWORD = "your_app_password"
+    EMAIL = os.getenv("EMAIL")
+    PASSWORD = os.getenv("EMAIL_PASSWORD")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cursor = conn.cursor()
 
     # Get list of companies we've contacted
@@ -82,7 +101,7 @@ def check_responses():
         SELECT c.email, a.id, a.sent_at
         FROM companies c
         JOIN applications a ON c.id = a.company_id
-        WHERE a.response_received = 0
+        WHERE a.response_received = FALSE
     """)
     pending_apps = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
 
@@ -94,7 +113,7 @@ def check_responses():
         mail.login(EMAIL, PASSWORD)
         mail.select("inbox")
 
-        # Search for unread emails from last 7 days
+        # Search for unread emails
         status, messages = mail.search(None, 'UNSEEN')
 
         for email_id in messages[0].split()[-50:]:  # Check last 50 unread
@@ -133,13 +152,13 @@ def check_responses():
                 # Update database
                 cursor.execute("""
                     UPDATE applications 
-                    SET response_received = 1, response_date = ?
-                    WHERE id = ?
-                """, (datetime.now(), app_id))
+                    SET response_received = TRUE, response_date = NOW()
+                    WHERE id = %s
+                """, (app_id,))
 
                 cursor.execute("""
                     INSERT INTO responses (application_id, subject, body, sentiment)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                 """, (app_id, subject, body[:500], sentiment))
 
                 new_responses.append({
@@ -156,6 +175,7 @@ def check_responses():
     except Exception as e:
         print(f"Error checking emails: {e}", file=sys.stderr)
 
+    cursor.close()
     conn.close()
 
     result = {
@@ -196,7 +216,7 @@ def generate_report():
     Generate statistics report
     Returns formatted text for email
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cursor = conn.cursor()
 
     # Total applications
@@ -204,7 +224,7 @@ def generate_report():
     total = cursor.fetchone()[0]
 
     # Responses
-    cursor.execute("SELECT COUNT(*) FROM applications WHERE response_received = 1")
+    cursor.execute("SELECT COUNT(*) FROM applications WHERE response_received = TRUE")
     responses = cursor.fetchone()[0]
 
     # Positive responses
@@ -219,7 +239,7 @@ def generate_report():
     # Follow-ups needed
     cursor.execute("""
         SELECT COUNT(*) FROM applications 
-        WHERE response_received = 0 AND next_follow_up_date <= datetime('now')
+        WHERE response_received = FALSE AND next_follow_up_date <= NOW()
     """)
     followups = cursor.fetchone()[0]
 
@@ -243,12 +263,13 @@ def generate_report():
     cursor.execute("""
         SELECT DATE(sent_at) as date, COUNT(*) as count
         FROM applications
-        WHERE sent_at >= date('now', '-7 days')
+        WHERE sent_at >= NOW() - INTERVAL '7 days'
         GROUP BY DATE(sent_at)
         ORDER BY date DESC
     """)
     timeline = cursor.fetchall()
 
+    cursor.close()
     conn.close()
 
     response_rate = (responses / total * 100) if total > 0 else 0
@@ -364,11 +385,11 @@ def scrape_linkedin_jobs():
                         "description": ""
                     }
                     jobs.append(job)
-            except Exception as e:
+            except Exception:
                 continue
 
         # Save to database
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_conn()
         cursor = conn.cursor()
 
         new_jobs = []
@@ -376,13 +397,16 @@ def scrape_linkedin_jobs():
             try:
                 cursor.execute("""
                     INSERT INTO job_posts (title, company_name, location, url, source)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (url) DO NOTHING
                 """, (job['title'], job['company'], job['location'], job['url'], job['source']))
                 new_jobs.append(job)
-            except sqlite3.IntegrityError:
+            except psycopg2.IntegrityError:
+                conn.rollback()
                 pass  # Job already exists
 
         conn.commit()
+        cursor.close()
         conn.close()
 
         result = {
